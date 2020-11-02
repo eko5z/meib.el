@@ -11,7 +11,7 @@
 
 ;;; Code:
 
-(require 'meib-permission "./meib-permission.el")
+(require 'meib-permission (concat (file-name-directory (buffer-file-name)) "meib-permission.el"))
 
 (defgroup meib nil
   "MEIB Emacs I(RC) Bot."
@@ -110,7 +110,8 @@ in detail in `meib-process-irc-message'."
   :type '(repeat (function :tag "Callback")))
 
 (defcustom meib-command-alist
-  '(("help" . meib-command-help))
+  '(("help" . meib-command-help)
+    ("permission" . meib-permission))
   "The callbacks to commands processed by `meib-process-command'.
 They are in the form of (COMMAND-NAME . FUNCTION).
 
@@ -219,7 +220,7 @@ command."
 If it is, return (COMMAND . ARGUMENTS), otherwise return nil."
   ;; Make it use a real regex matching the command... soon...
   (when (string-match meib-command-regexp input)
-    (split-string (match-string 1 input) " ")))
+    (split-string (match-string 1 input) " " t)))
     ;; (let ((n-matches (1- (/ (length (match-data)) 2))))
     ;;   (mapcar (lambda (i) (match-string i input))
     ;; 			       (number-sequence 0 n-matches) ""))))
@@ -293,10 +294,11 @@ Also reset the PROCESS queue timer with a delay of THROTTLE."
 	 (queue-timer (plist-get connected-server-plist :queue-timer)))
     (when queue
       (cancel-timer queue-timer)
-      (setf queue-timer (run-with-timer throttle throttle 'meib-queue-timer-function process throttle))
+      (plist-put connected-server-plist
+		 :queue-timer (run-with-timer throttle throttle 'meib-queue-timer-function process throttle))
       (apply (car (last queue)))
       (plist-put connected-server-plist :queue (butlast queue)))))
-  
+      
 (defun meib-create-buffer (name)
   "Create a MEIB buffer with NAME."
   (let ((buffer (get-buffer-create name)))
@@ -408,7 +410,7 @@ queue timer for the channel."
 	 (nick-name (meib-nick-name-from-full-name (plist-get message :sender)))
 	 (channel (assoc-string message-channel (plist-get connected-server-plist :channels))))
     (when (string= nick-name (plist-get connected-server-plist :nick-name))
-      (setf channel nil))		;Good enough.
+      (setq channel nil))		;Good enough.
     (plist-put (cdr channel) :users (delete nick-name (plist-get (cdr channel) :users)))))
 
 (defun meib-handler-QUIT (process message)
@@ -456,11 +458,10 @@ Appends an `\r\n'."
   (process-send-string process (concat string "\r\n")))
 
 (defun meib-send-string-queue (process string)
-  "Send STRING to PROCESS via the PROCESS queue.
-The queue is executed every 2 seconds."
+  "Send STRING to PROCESS via the PROCESS queue."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (queue (plist-get connected-server-plist :queue)))
-    (plist-put connected-server-plist :queue (append queue `((meib-send-string ,process ,string))))))
+    (plist-put connected-server-plist :queue (append `((meib-send-string ,process ,string)) queue))))
 
 (defun meib-sentinel (process sentinel)
   "Called when PROCESS receives SENTINEL."

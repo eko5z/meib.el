@@ -13,8 +13,8 @@
   :group 'meib)
 
 (defcustom meib-permission-users
-  '(("user1" . "is cool, therefore has a permission to speak."))
-  "The users that have a permission to speak.
+  '(("user" . "is X, therefore has no permission to speak."))
+  "The users that have (or don't have) a permission to speak.
 The permissions are in the form (USER DESCRIBING-PHRASE)."
   :group 'meib-permission
   :type '(repeat (cons :tag "Permission" (string :tag "Name")
@@ -27,13 +27,13 @@ The permissions are in the form (USER DESCRIBING-PHRASE)."
   :group 'meib-permission
   :type 'string)
 
-(defun meib-permission (process message command-with-args)
+(defun meib-permission (process message arguments)
   "Checks if someone has a permission to speak.
 If no argument is provided, checks if YOU have a permission to
 speak."
   (let* ((channel-name (car (plist-get message :arguments)))
 	 (channel-users (plist-get (cdr (assoc-string channel-name (plist-get (cdr (assoc process meib-connected-server-alist)) :channels))) :users))
-	 (arg1 (car command-with-args))
+	 (arg1 (car arguments))
 	 (name (if arg1 arg1 (plist-get message :sender)))
 	 (nick-name (meib-nick-name-from-full-name name))
 	 (permission (cdr (assoc nick-name meib-permission-users))))

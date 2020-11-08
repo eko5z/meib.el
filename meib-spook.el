@@ -39,15 +39,16 @@
 		"the press" "ban" "Great Red Wave" "Russia" "Putin"
 		"Kim Jong-Un" "the Hispanic Americans" "lockdown" "economy"
 		"vaccine" "4 more years" "healthcare" "the Biden Lockdown"
-		"Mueller" "MAGA" "the Asian Americans" "folks" "impeach")))
-  "Collections of words used by meib-spook.
+		"Mueller" "MAGA" "the Asian Americans" "folks" "impeach"
+		"antifa" "BLM")))
+  "Collections of words used by `meib-spook'.
 Collections are in the form (COLLECTION USE-RANDOM-VERBS (WORDS))."
   :group 'meib-spook
   :type '(repeat (list (string :tag "Collection") (boolean :tag "Use random verbs") (repeat (string :tag "Word")))))
 
 (defvar meib-spook-verbs '(" is" " are" " were" " was" "," "." "!" "?" " I"
 			   " you" " they" " we" "'s" "'re" " I'm" ";" ":" " no"
-			   "'ll" " will" " shall"))
+			   "'ll" " will" " shall" " what" " he" " she"))
 
 (defun meib-spook-shuffle (words &optional n)
   "Shuffles around WORDS and returns N random words."

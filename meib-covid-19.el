@@ -17,11 +17,10 @@
 
 (defun meib-covid-19-group-number (number)
   "Add spaces to NUMBER and return it as a string."
-  (let ((num (number-to-string number))
-	(op " "))
+  (let ((num (number-to-string number)))
     (while (string-match "\\(.*[0-9]\\)\\([0-9][0-9][0-9].*\\)" num)
       (setq num (concat 
-		 (match-string 1 num) op
+		 (match-string 1 num) " "
 		 (match-string 2 num))))
     num))
 

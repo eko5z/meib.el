@@ -1,0 +1,20 @@
+#+TITLE: MEIB---MEIB Emacs I(RC) Bot
+
+* Features
+- Multi-server, multi-channel
+- NickServ authentication for several nicks---authenticates when bot
+  changes nick as well
+- Keeping track of users in each channel
+- Message throttling
+- Truncating messages and anti-kick measures (appending a random
+  number of invisible characters to the end of each message)
+- Splitting messages that are too long into several messages
+- Commands available for everyone and restricted commands---available
+  only for chosen users
+- Speaking through ACTIONs---I think it differentiates the bot from
+  IRC users
+- Fully customizable, expandable through commands and PRIVMSG
+  callbacks
+
+* How to use and expand
+Coming soon.

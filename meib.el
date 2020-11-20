@@ -3,15 +3,16 @@
 ;;; Commentary:
 ;; The code is largely inspired (and in some parts copied) from
 ;; rcirc.el.
+;;
+;; And I'm not boasting or anything, but this bot is state-of-the-art.
 ;; 
 ;; TODO:
 ;;
-;; o Regex-matching fix for the commands.
-;;
 ;; o Reconnecting to channels after being kicked.
 ;;
-;; o Make an option to make the bot speak through /me. The format is
-;;   ACTION <text>.
+;; o Change the arguments the commands retrieve. Sending the whole
+;;   message is unneeded, and for simplicity sake, it should be replaced
+;;   with sender and receiver.
 
 ;;; Code:
 
@@ -21,24 +22,31 @@
 (require 'meib-covid-19 (concat (file-name-directory (buffer-file-name)) "meib-covid-19.el"))
 (require 'meib-quotes (concat (file-name-directory (buffer-file-name)) "meib-quotes.el"))
 (require 'meib-love (concat (file-name-directory (buffer-file-name)) "meib-love.el"))
+(require 'meib-doctor (concat (file-name-directory (buffer-file-name)) "meib-doctor.el"))
 
 (defgroup meib nil
   "MEIB Emacs I(RC) Bot."
-  :link '(variable-link meib-command-alist)
-  :link '(variable-link meib-server-alist)
   :link '(url-link "https://github.com/emssej/meib.el")
+  :link '(variable-link meib-server-alist)
+  :link '(variable-link meib-command-alist)
   :version "26.3"
   :prefix "meib-"
   :group 'applications)
 
+;; All the properties here are mandatory, so I don't know if we
+;; shouldn't use a different structure...  And on another note, maybe
+;; in the future we should support authentication other than NickServ,
+;; but really, I don't think anyone uses those fringe servers that
+;; don't use NickServ. It's an easy implementation, though.
 (defcustom meib-server-alist
   (quote (("irc.freenode.net" :port 7000
 	   :use-tls t :nick-name "Meibel"
 	   :user-name "meibel" :real-name "Maybelline"
-	   :throttle 1.6 :truncate 419 :anti-kick 5
-	   :ignored-users ("user")
-	   :authorized-users ("Meibel")
-	   :channels ("#emacs" "#vim"))))
+	   :authentication (("Meibel" . "password"))
+	   :channels ("#gnu" "#emacs")
+	   :throttle 1.6 :truncate 419 :anti-kick 6
+	   :ignored-users ("someone")
+	   :authorized-users ("Meibel"))))
   "An alist of IRC connections to establish when running `meib'.
 Each element is of type (SERVER-NAME PARAMETERS).
 Each optional parameter is of type (PARAMETER VALUE).
@@ -67,14 +75,19 @@ server.
 What realname (the one when you are /WHOIS-ed) to use in the IRC
 server.
 
+`:authentication'
+
+Passwords associated with nicks to use when identifying with
+NickServ. It's in the form of (NICK . PASSWORD).
+
 `:throttle'
 
-Whether to throttle PRIVMSG's. This is an anti-flooding measure,
+Whether to throttle PRIVMSG's.  This is an anti-flooding measure,
 and also deters channel bots that kick if an user floods.
 
-`:truncate' 
+`:truncate'
 
-Whether to truncate PRIVMSG's, and by how many characters. If you
+Whether to truncate PRIVMSG's, and by how many characters.  If you
 are also using `:anti-kick', the number of invisible characters
 is subtracted from this value.
 
@@ -96,44 +109,48 @@ commands (`meib-restricted-command-alist').
 
 What channels to connect to in the server."
   :group 'meib
-  :type '(alist :key-type (string :tag "Address")
-		:value-type (plist :options
-				   ((:port (integer :tag "Port"))
-				    (:use-tls (boolean :tag "Use TLS"))
-				    (:nick-name (string :tag "Nickname"))
-				    (:user-name (string :tag "Username"))
-				    (:real-name (string :tag "Real name"))
-				    (:throttle
-				     (choice (number :tag "Throttle time (in seconds)")
-					     (const :tag "Don't throttle" nil)))
-				    (:truncate
-				     (choice (integer :tag "Truncate lines to")
-					     (const :tag "Don't truncate lines" nil)))
-				    (:anti-kick
-				     (choice (integer :tag "Random number of invisible characters in interval [0,n)")
-					     (const :tag "Don't apply anti-kick measures" nil)))
-				    (:ignored-users
-				     (repeat :tag "Ignored users"
-					     (string :tag "User")))
-				    (:authorized-users
-				     (repeat :tag "Users allowed to use authorized commands"
-					     (string :tag "User")))
-				    (:channels (repeat :tag "Channels" (string :tag "Channel")))))))
-
+  :type (quote (alist :key-type (string :tag "Address")
+		      :value-type (plist :tag "Options"
+					 :options
+					 ((:port (integer :tag "Port"))
+					  (:use-tls (boolean :tag "Use TLS"))
+					  (:nick-name (string :tag "Nick name"))
+					  (:user-name (string :tag "User name"))
+					  (:real-name (string :tag "Real name"))
+					  (:authentication
+					   (choice (alist :tag "Authenticate"
+							  :key-type (string :tag "Nick name")
+							  :value-type (string :tag "Password"))
+						   (const :tag "Don't authenticate")))
+					  (:channels (repeat :tag "Channels" (string :tag "Channel")))
+					  (:throttle
+					   (choice (number :tag "Throttle time (in seconds)")
+						   (const :tag "Don't throttle" nil)))
+					  (:truncate
+					   (choice (integer :tag "Truncate lines (in number of characters)")
+						   (const :tag "Don't truncate lines" nil)))
+					  (:anti-kick
+					   (choice (integer :tag "Random number of invisible characters in interval [0,n)")
+						   (const :tag "Don't apply anti-kick measures" nil)))
+					  (:ignored-users
+					   (repeat :tag "Ignored users"
+						   (string :tag "User")))
+					  (:authorized-users
+					   (repeat :tag "Users allowed to use authorized commands"
+						   (string :tag "User"))))))))
+  
 (defcustom meib-privmsg-callbacks
   '(meib-process-command)
   "Callbacks exceuted on a PRIVMSG command.
-The callbacks take in the arguments (PROCESS MESSAGE ARGUMENTS).
+The callbacks take in the arguments (PROCESS MESSAGE).
 
 PROCESS is an usual Emacs process, to send strings to it use
 `meib-send-string', but it is suggested to use more high-level
-functions such as `meib-privmsg'. Those commands use the server
+functions such as `meib-privmsg'.  Those commands use the server
 queue, which prevents the bot from flooding.
 
 MESSAGE is a plist of IRC message components, which is described
-in detail in `meib-process-irc-message'.
-
-ARGUMENTS is a list of strings, the arguments to the command."
+in detail in `meib-process-irc-message'."
   :group 'meib
   :type '(repeat (function :tag "Callback")))
 
@@ -143,13 +160,14 @@ ARGUMENTS is a list of strings, the arguments to the command."
     ("spook" . meib-spook)
     ("covid-19" . meib-covid-19)
     ("quotes" . meib-quotes)
-    ("love" . meib-love))
+    ("love" . meib-love)
+    ("doctor" . meib-doctor))
   "The callbacks to commands processed by `meib-process-command'.
 They are in the form of (COMMAND-NAME . FUNCTION).
 
-FUNCTION takes in the arguments (PROCESS MESSAGE ARGUMENTS). For a
+FUNCTION takes in the arguments (PROCESS MESSAGE ARGUMENTS).  For a
 more in-depth explanation of MESSAGE, consult
-`meib-privmsg-callbacks'. For an explanation of ARGUMENTS, consult
+`meib-privmsg-callbacks'.  For an explanation of ARGUMENTS, consult
 `meib-parse-command'."
   :group 'meib
   :type '(repeat (cons :tag "Command" (string :tag "Name") (function :tag "Callback"))))
@@ -160,23 +178,31 @@ more in-depth explanation of MESSAGE, consult
   "The callbacks to commands processed by `meib-process-command'.
 They are in the form of (COMMAND-NAME . FUNCTION).
 
-This list contains commands restricted to certain users. For a more
-in-depth description of the alist, see `meib-command-alist'."
+This list contains commands restricted to certain
+users (`:authorized-users' in `meib-server-alist').
+
+For a more in-depth description of this alist, see
+`meib-command-alist'."
   :group 'meib
   :type '(repeat (cons :tag "Command" (string :tag "Name") (function :tag "Callback"))))
 
-(defcustom meib-command-regexp "¿\\(.+\\)\\?"
+(defcustom meib-command-regexp (rx ?\¿ (group (1+ (any alphanumeric ?\-))) (0+ (any blank) (group (1+ (any alphanumeric ?\-)))) ?\?)
   "Regexp that matches a command.
-For now, the only group should be the actual command, i.e. `help
-arg1 arg2', which is then split by spaces."
+The first group should be the command name itself, and the
+rest (if any) are the commands."
   :group 'meib
   :type 'regexp)
 
-(defcustom meib-restricted-command-regexp "¡\\(.+\\)\\!"
+(defcustom meib-restricted-command-regexp (rx ?\¡ (group (1+ (any alphanumeric ?\-))) (0+ (any blank) (group (1+ (any alphanumeric ?\-)))) ?\!)
   "Regexp that matches a restricted command.
 See `meib-command-regexp'."
   :group 'meib
   :type 'regexp)
+
+(defcustom meib-speak-through-actions t
+  "Whether or not the bot should speak through ACTIONs."
+  :group 'meib
+  :type 'boolean)
 
 (defvar meib-connected-server-alist nil
   "An alist of connected servers.
@@ -213,7 +239,7 @@ documentation."
 					    (concat command-list " " restricted-command-list))))))
 
 (defun meib-privmsg (process receiver message)
-  "Send a MESSAGE PRIVMSG to RECIEVER via PROCESS.
+  "Send MESSAGE to RECEIVER via PROCESS.
 This function also truncates MESSAGE to the value set in
 `meib-server-alist', and appends invisible characters at the
 end (if it was set in `meib-server-alist').
@@ -222,11 +248,9 @@ If MESSAGE is longer than the truncate value, then send several
 split messages."
   (let* ((address (plist-get (cdr (assoc process meib-connected-server-alist)) :address))
 	 (server-plist (cdr (assoc-string address meib-server-alist)))
-	 (throttle (plist-get server-plist :throttle))
-	 (truncate (plist-get server-plist :truncate))
-	 (anti-kick (plist-get server-plist :anti-kick))
-	 (messages (meib-format-privmsg receiver message truncate anti-kick)))
-    (if throttle
+	 (messages (meib-format-privmsg receiver message (plist-get server-plist :truncate)
+					(plist-get server-plist :anti-kick) meib-speak-through-actions)))
+    (if (plist-get server-plist :throttle)
 	(progn
 	  (meib-send-string-queue process (car messages))
 	  (when (cadr messages)
@@ -235,51 +259,31 @@ split messages."
       (when (cadr messages)
 	(meib-privmsg process receiver (cadr messages))))))
 
-(defun meib-format-privmsg (receiver message &optional truncate anti-kick)
+(defun meib-format-privmsg (receiver message &optional truncate anti-kick actionp)
   "Format MESSAGE as a PRIVMSG.
 This function applies all the needed operations specified in
-`meib-server-alist', i.e. TRUNCATE and ANTIKICK, and also sets
+`meib-server-alist', i.e. TRUNCATE and ANTI-KICK, and also sets
 the target as RECEIVER.
 
 If MESSAGE is longer than TRUNCATE, also return the remaining
-string, in the form (FORMATTED REMAINING)."
-  (let* ((n (random anti-kick))
-	 (truncate-width (if anti-kick (- truncate n) truncate))
+string, in the form (FORMATTED REMAINING).
+
+If ACTIONP is non-nil, send the message as an ACTION."
+  (let* ((n (* (/ (random anti-kick) 2) 2))
+	 (truncate-width (if anti-kick (- truncate n (if actionp 9 0)) truncate))
 	 (truncated (if truncate (truncate-string-to-width message truncate-width) message))
 	 (rest (if (> (length message) truncate-width) (substring message truncate-width) nil)))
     (list
-     (format "PRIVMSG %s :%s%s‍" receiver (if truncate truncated message) (if anti-kick (make-string n ?‌) ""))
+     (format "PRIVMSG %s :%s%s%s‍%s"
+	     (meib-nick-name-from-full-name receiver) (if actionp "ACTION " "")
+	     (if truncate truncated message) (if anti-kick (make-string n ?\C-b) "")
+	     (if actionp ""))
      rest)))
-
-;; TODO here:
-;; o Handle QUIT and NICK commands nicely.
-;; o Make it use font-lock so themes play nicely with it.
-(defun meib-debug-print (process message)
-  "Print MESSAGE to the PROCESS buffer (or channel buffer)."
-  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
-	 (receiver (car (plist-get message :arguments)))
-	 ;; A naive check to see if the argument is a channel, I guess.
-	 (buffer (plist-get (cdr (assoc-string receiver (plist-get connected-server-plist :channels))) :buffer))
-	 (inhibit-read-only t)
-	 (command (plist-get message :command))
-	 (sender (plist-get message :sender))
-	 (arguments (plist-get message :arguments)))
-    (when (or buffer (plist-get connected-server-plist :buffer))
-      (with-current-buffer (or buffer (plist-get connected-server-plist :buffer))
-	(goto-char (point-max))
-	(when sender
-	  (insert (propertize (meib-nick-name-from-full-name sender) 'face '(:foreground "blue" :weight bold)) " "))
-	(when (not (string= command "PRIVMSG"))
-	  (insert (propertize command 'face '(:weight bold)) " "))
-	(when arguments
-	  (dolist (argument (if buffer (cdr arguments) arguments))
-	    (insert argument " ")))
-	(newline)))))
 
 (defun meib-process-command (process message)
   "Process MESSAGE and see if it contains a command.
-If it does, execute the command callback corresponding to the
-command."
+If it does, call (or don't) the corresponding callback with
+arguments PROCESS and MESSAGE, as well as the received arguments."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (server-plist (cdr (assoc (plist-get connected-server-plist :address) meib-server-alist)))
 	 (authorized-users (plist-get server-plist :authorized-users))
@@ -299,15 +303,11 @@ command."
 	  (meib-privmsg process channel-name "You can't use this command."))))))
 
 (defun meib-parse-command (input regexp)
-  "Process INPUT and see if it has a command.
+  "Process INPUT according to REGEXP and see if it has a command.
 If it is, return (COMMAND . ARGUMENTS), otherwise return nil."
-  ;; Make it use a real regex matching the command... soon...
   (when (string-match regexp input)
-    (split-string (match-string 1 input) " " t)))
-;; (let ((n-matches (1- (/ (length (match-data)) 2))))
-;;   (mapcar (lambda (i) (match-string i input))
-;; 			       (number-sequence 0 n-matches) ""))))
-
+    (let ((n-matches (1- (/ (length (match-data)) 2))))
+      (mapcar (lambda (i) (match-string i input)) (number-sequence 1 n-matches)))))
 
 (defun meib nil
   "Connect to the servers in `meib-server-alist'.
@@ -317,11 +317,11 @@ usually meant to be configured."
   (dolist (server meib-server-alist)
     (let* ((address (car server))
 	   (server-plist (cdr server))
-	   (port (or (plist-get server-plist :port) meib-default-port))
-	   (use-tls (or (plist-get server-plist :use-tls) meib-default-use-tls))
-	   (nick-name (or (plist-get server-plist :nick-name) meib-default-nick-name))
-	   (user-name (or (plist-get server-plist :user-name) meib-default-user-name))
-	   (real-name (or (plist-get server-plist :real-name) meib-default-real-name)))
+	   (port (plist-get server-plist :port))
+	   (use-tls (plist-get server-plist :use-tls))
+	   (nick-name (plist-get server-plist :nick-name))
+	   (user-name (plist-get server-plist :user-name))
+	   (real-name (plist-get server-plist :real-name)))
       (meib-connect address port use-tls nick-name user-name real-name))))
 
 (defun meib-connect (address port use-tls nick-name user-name real-name)
@@ -341,7 +341,7 @@ If already connected to SERVER, display a message."
 		     :type (if use-tls 'tls 'plain))))
       (set-process-filter process 'meib-filter)
       (set-process-sentinel process 'meib-sentinel)
-      (meib-send-string process (format "NICK %s" nick-name))
+      (meib-change-nick-name process nick-name)
       (meib-send-string process (format "USER %s 0 * :%s" user-name real-name))
       (if throttle
 	  (push
@@ -352,7 +352,30 @@ If already connected to SERVER, display a message."
 	(push `(,process :buffer ,buffer :address ,address :nick-name ,nick-name :channels nil)
 	      meib-connected-server-alist)))))
 
+(defun meib-change-nick-name (process nick-name)
+  "Change nick in PROCESS to NICK-NAME."
+  (meib-send-string process (format "NICK %s" nick-name)))
 
+(defun meib-get-nick-authentication (process nick-name)
+  "Returns the authentication of NICK-NAME in PROCESS.
+If there is none, return nil."
+  (let* ((address (plist-get (cdr (assoc process meib-connected-server-alist)) :address))
+	 (server-plist (cdr (assoc-string address meib-server-alist)))
+	 (password (cdr (assoc-string nick-name (plist-get server-plist :authentication)))))
+    password))
+
+(defun meib-authenticate (process nick-name)
+  "Authenticate NICK-NAME in PROCESS with its password.
+This function returns nil if the nick name is not in the
+authentication list. Otherwise, it returns the password.
+
+The authentication information is contained in
+`meib-server-alist' under `:authentication'."
+  (let* ((password (meib-get-nick-authentication process nick-name)))
+    (when password
+      (meib-send-string process (format "PRIVMSG NickServ :identify %s" password)))
+    password))
+  
 (defun meib-queue-timer-function (process throttle)
   "Call the first function in the PROCESS queue.
 Also reset the PROCESS queue timer with a delay of THROTTLE."
@@ -378,16 +401,21 @@ Also reset the PROCESS queue timer with a delay of THROTTLE."
     (define-key map (kbd "RET") 'meib-privmsg-interactive)
     map))
 
-;; TODO: this is pretty naive, maybe we should use (if it exists)
-;; buffer properties or something? This really should work in a
-;; different way. We shouldn't be operating on buffer names. This is
-;; probably the most horrible code in this file.
-(defun meib-privmsg-interactive (message)
-  "Prompts for MESSAGE and sends it to channel."
-  (interactive "sMessage: ")
-  (let* ((server-name (car (split-string (cadr (split-string (buffer-name (current-buffer)) "/")) "@")))
-	 (process (get-process (concat "meib/" server-name)))
-	 (channel (substring (cadr (split-string (buffer-name (current-buffer)) "@")) 0 -1))
+(defvar meib-privmsg-interactive-channel-history nil)
+(defvar meib-privmsg-interactive-message-history nil)
+
+(defun meib-privmsg-interactive (channel message)
+  "Prompts for MESSAGE and sends it to CHANNEL."
+  (interactive
+   (let* ((channels (plist-get (cdr (assoc (get-buffer-process (current-buffer)) meib-connected-server-alist)) :channels))
+	  (channel-names (mapcar (lambda (channel) (car channel)) channels))
+	  (last-channel (car meib-privmsg-interactive-channel-history)))
+     (list
+      (completing-read (format "Channel (default %s): " last-channel) channel-names
+		       (lambda (input) (member input channel-names)) 'confirm nil
+		       'meib-privmsg-interactive-channel-history last-channel)
+      (read-string "Message: " nil 'meib-privmsg-interactive-message-history))))
+  (let* ((process (get-buffer-process (current-buffer)))
 	 (nick-name (plist-get (cdr (assoc process meib-connected-server-alist)) :nick-name)))
     ;; If it's called interactively, we can also parse the bots
     ;; message.
@@ -424,7 +452,7 @@ The command (i.e. PRIVMSG, JOIN, etc).
 
 `:arguments'
 
-The arguments to the command. Most commonly the first argument is
+The arguments to the command.  Most commonly the first argument is
 a channel or an user, and the second argument is the text."
   (if (string-match "^\\(:\\([^ ]+\\) \\)?\\([^ ]+\\) \\(.+\\)$" message)
       (let* ((sender (match-string 2 message))
@@ -440,10 +468,32 @@ a channel or an user, and the second argument is the text."
 (defun meib-handle-server-response (process message)
   "Handle MESSAGE from PROCESS."
   (when (not (null message))
-    (meib-debug-print process message)
-    (let ((handler (intern-soft (concat "meib-handler-" (plist-get message :command)))))
-      (when (fboundp handler)
-	(funcall handler process message)))))
+    (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	   (server-plist (cdr (assoc (plist-get connected-server-plist :address) meib-server-alist)))
+	   (ignored-users (plist-get server-plist :ignored-users))
+	   (sender-nick-name (when (plist-get message :sender) (meib-nick-name-from-full-name (plist-get message :sender)))))
+      ;; We don't want the bot to see ignored users' PRIVMSGs.
+      (when (or (not (member sender-nick-name ignored-users))
+		(not sender-nick-name))
+	(meib-debug process message)
+	(let ((handler (intern-soft (concat "meib-handler-" (plist-get message :command)))))
+	  (when (fboundp handler)
+	    (funcall handler process message)))))))
+
+(defun meib-debug (process message)
+  "Print MESSAGE to the PROCESS buffer."
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	 (command (plist-get message :command))
+	 (sender (plist-get message :sender))
+	 (arguments (plist-get message :arguments))
+	 (buffer (plist-get connected-server-plist :buffer))
+	 (inhibit-read-only t))
+    (when buffer
+      (when (not (or (string= command "PONG") (string= command "PING")))
+	(with-current-buffer buffer
+	  (goto-char (point-max))
+	  (insert (format "%s %s %s" command sender (mapconcat 'identity arguments " ")))
+	  (newline))))))
 
 (defun meib-handler-PING (process message)
   "Handle MESSAGE from PROCESS if it's a PING.
@@ -453,6 +503,15 @@ After a PING, we send a PONG back to the process."
 (defun meib-handler-001 (process message)
   "Handle MESSAGE from PROCESS if it's a 001.
 Afer a 001 command, we join all channels of the process."
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	 (nick-name (plist-get connected-server-plist :nick-name)))
+    ;; Authenticate, but only join if it's impossible to do so. Then,
+    ;; in `meib-handler-MODE' we connect only after we've registered.
+    (when (not (meib-authenticate process nick-name))
+      (meib-join-channels process))))
+
+(defun meib-join-channels (process)
+  "Join all channels specified in `meib-connected-server-alist'."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (address (plist-get connected-server-plist :address))
 	 (server-plist (cdr (assoc-string address meib-server-alist)))
@@ -503,12 +562,27 @@ remove it instead."
     (dolist (channel channels)
       (meib-remove-channel-user process (car channel) nick-name))))
 
+(defun meib-handler-MODE (process message)
+  "Handle MESSAGE from PROCESS if it's a MODE.
+This is used mainly for checking if our nick is registered, in
+order to join channels *after* we've been registered."
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	 (mode (cadr (plist-get message :arguments)))
+	 (nick-name (car (plist-get message :arguments))))
+    (when (and (string= mode "+r")
+	       (string= nick-name (plist-get connected-server-plist :nick-name)))
+      (meib-join-channels process))))
+
 (defun meib-handler-NICK (process message)
   "Handle MESSAGE from PROCESS if it's a NICK.
 After a NICK command, we change the username in ALL channels."
-  (let* ((channels (plist-get (cdr (assoc process meib-connected-server-alist)) :channels))
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	 (channels (plist-get connected-server-plist :channels))
 	 (new-nick-name (car (plist-get message :arguments)))
 	 (nick-name (meib-nick-name-from-full-name (plist-get message :sender))))
+    ;; If it's us, we also try to authenticate.
+    (when (string= nick-name (plist-get connected-server-plist :nick-name))
+      (meib-authenticate process new-nick-name))
     (dolist (channel channels)
       (when (member nick-name (plist-get (cdr channel) :users))
 	(meib-remove-channel-user process (car channel) nick-name)
@@ -517,19 +591,13 @@ After a NICK command, we change the username in ALL channels."
 (defun meib-handler-PRIVMSG (process message)
   "Handle MESSAGE from PROCESS if it's a PRIVMSG.
 In here, we just call the callbacks in
-`meib-privmsg-callbacks'. These do whatever they want, from
+`meib-privmsg-callbacks'.  These do whatever they want, from
 handling commands, to parsing URLs."
-  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
-	 (server-plist (cdr (assoc (plist-get connected-server-plist :address) meib-server-alist)))
-	 (ignored-users (plist-get server-plist :ignored-users))
-	 (sender-nick-name (meib-nick-name-from-full-name (plist-get message :sender))))
-    ;; We don't want the bot to see ignored users' PRIVMSGs.
-    (when (not (member sender-nick-name ignored-users))
-      (dolist (callback meib-privmsg-callbacks)
-	(funcall callback process message)))))
+  (dolist (callback meib-privmsg-callbacks)
+    (funcall callback process message)))
 
 (defun meib-add-channel-user (process channel-name nick-name)
-  "Adds NICK-NAME to CHANNEL-NAME in the PROCESS plist.
+  "Add NICK-NAME to CHANNEL-NAME in the PROCESS plist.
 If NICK-NAME is us, also create the channel."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (channels (plist-get connected-server-plist :channels))
@@ -537,13 +605,11 @@ If NICK-NAME is us, also create the channel."
 	 (channel-plist (cdr channel)))
     (when (not (member nick-name (plist-get channel-plist :users)))
       (if (string= nick-name (plist-get connected-server-plist :nick-name))
-	  (progn
-	    (let ((buffer (meib-create-buffer (concat "*meib/" (plist-get connected-server-plist :address) "@" channel-name "*"))))
-	      (plist-put connected-server-plist :channels (append channels `((,channel-name :buffer ,buffer :users (,nick-name)))))))
+	  (plist-put connected-server-plist :channels (append channels `((,channel-name :users (,nick-name)))))
 	(plist-put channel-plist :users (append (plist-get channel-plist :users) `(,nick-name)))))))
 
 (defun meib-remove-channel-user (process channel-name nick-name)
-  "Removes NICK-NAME from CHANNEL-NAME in the PROCESS plist.
+  "Remove NICK-NAME from CHANNEL-NAME in the PROCESS plist.
 If NICK-NAME is us, remove the whole channel."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (channels (plist-get connected-server-plist :channels))
@@ -560,9 +626,8 @@ That means it'll get `user' from `user!~user@vhost.example'"
 (defun meib-send-string (process string)
   "Send STRING to PROCESS.
 Appends an `\r\n'."
-  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
-	 (nick-name (plist-get connected-server-plist :nick-name)))
-    (meib-debug-print process (plist-put (meib-process-irc-message string) :sender nick-name))
+  (let* ((nick-name (plist-get (cdr (assoc process meib-connected-server-alist)) :nick-name)))
+    (meib-debug process (plist-put (meib-process-irc-message string) :sender nick-name))
     (process-send-string process (concat string "\r\n"))))
 
 (defun meib-send-string-queue (process string)
@@ -581,8 +646,8 @@ Appends an `\r\n'."
   "Disconnect from PROCESS."
   (if (not (assoc process meib-connected-server-alist))
       (message "Already disconnected from process %s." process)
-    (let ((connected-server-plist (assoc process meib-connected-server-alist))
-	  (queue-timer (plist-get connected-server-plist :queue-timer)))
+    (let* ((connected-server-plist (assoc process meib-connected-server-alist))
+	   (queue-timer (plist-get connected-server-plist :queue-timer)))
       (when (timerp queue-timer)
 	(cancel-timer queue-timer))
       (when (not (null process))

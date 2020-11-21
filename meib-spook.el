@@ -64,21 +64,20 @@ The WORDS are mixed in with `meib-spook-verbs'."
 		      (nth (random (length meib-spook-verbs)) meib-spook-verbs))))
 	  (number-sequence 0 (or n 50))))
 
-(defun meib-spook (process message arguments)
+(defun meib-spook (process sender receiver arguments)
   "Generates a random mumble of words from a collection.
 The default collection is `spook'. Available collections:
 `spook', `trump'."
-  (let* ((channel-name (car (plist-get message :arguments)))
-	 (arg1 (car arguments))
+  (let* ((arg1 (car arguments))
 	 (database (assoc arg1 meib-spook-collection-alist)))
     (if database
 	(let* ((words (caddr database))
 	       (with-verbs (cadr database)))
 	  (if with-verbs
-	      (meib-privmsg process channel-name (string-join (meib-spook-shuffle-with-verbs words (random 30)) " "))
-	    (meib-privmsg process channel-name (string-join (meib-spook-shuffle words (random 30)) " "))))
+	      (meib-privmsg process receiver (string-join (meib-spook-shuffle-with-verbs words (random 30)) " "))
+	    (meib-privmsg process receiver (string-join (meib-spook-shuffle words (random 30)) " "))))
       (let* ((words (caddr (assoc "spook" meib-spook-collection-alist))))
-	(meib-privmsg process channel-name (string-join (meib-spook-shuffle words (random 30)) " "))))))
+	(meib-privmsg process receiver (string-join (meib-spook-shuffle words (random 30)) " "))))))
 
 (provide 'meib-spook)
 

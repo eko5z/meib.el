@@ -53,24 +53,23 @@
 A collection is in the form (STRING . (QUOTE1 ...))."
   :type '(repeat (cons :tag "Collection" (string :tag "Name") (repeat :tag "Quotes" (cons (string :tag "Quote") (string :tag "Author"))))))
 
-(defun meib-quotes (process message arguments)
+(defun meib-quotes (process sender receiver arguments)
   "Shows a random quote from a given collection.
 Collections available: `american psycho', `fredy perlman', `jean
 baudrillard'."
-  (let* ((channel-name (car (plist-get message :arguments)))
-	 (arg1 (downcase (string-join arguments " ")))
+  (let* ((arg1 (downcase (string-join arguments " ")))
 	 (quote-collection (cdr (assoc arg1 meib-quotes-collection-alist)))
 	 (quote-full (nth (random (length quote-collection)) quote-collection))
 	 (quote_ (car quote-full))
 	 (author (cdr quote-full)))
     (if quote_
-	(meib-privmsg process channel-name (format "\"%s\" --- %s" quote_ author))
+	(meib-privmsg process receiver (format "\"%s\" --- %s" quote_ author))
       (let* ((random-collection (nth (random (length meib-quotes-collection-alist)) meib-quotes-collection-alist))
 	     (collection-name (car random-collection))
 	     (random-quote (nth (length (cdr random-collection)) random-collection))
 	     (quote_ (car random-quote))
 	     (author (cdr random-quote)))
-	(meib-privmsg process channel-name (format "\"%s\" --- %s (%s)" quote_ author (capitalize collection-name)))))))
+	(meib-privmsg process receiver (format "\"%s\" --- %s (%s)" quote_ author (capitalize collection-name)))))))
 
 (provide 'meib-quotes)
 

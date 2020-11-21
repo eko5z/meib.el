@@ -27,18 +27,16 @@ The permissions are in the form (USER DESCRIBING-PHRASE)."
   :group 'meib-permission
   :type 'string)
 
-(defun meib-permission (process message arguments)
+(defun meib-permission (process sender receiver arguments)
   "Checks if someone has a permission to speak.
 If no argument is provided, checks if YOU have a permission to
 speak."
-  (let* ((channel-name (car (plist-get message :arguments)))
-	 (channel-users (plist-get (cdr (assoc-string channel-name (plist-get (cdr (assoc process meib-connected-server-alist)) :channels))) :users))
+  (let* ((channel-users (plist-get (cdr (assoc-string receiver (plist-get (cdr (assoc process meib-connected-server-alist)) :channels))) :users))
 	 (arg1 (car arguments))
-	 (name (if arg1 arg1 (plist-get message :sender)))
-	 (nick-name (meib-nick-name-from-full-name name))
+	 (nick-name (meib-nick-name-from-full-name (if arg1 arg1 sender)))
 	 (permission (cdr (assoc nick-name meib-permission-users))))
-    (meib-privmsg process channel-name (format "Checking if %s has a permission to speak..." nick-name))
-    (meib-privmsg process channel-name (format
+    (meib-privmsg process receiver (format "Checking if %s has a permission to speak..." nick-name))
+    (meib-privmsg process receiver (format
 					"According to my database, %s%s %s" nick-name
 				        (if (member nick-name channel-users) "" " is not here, but")
 					(if permission permission meib-permission-default)))))

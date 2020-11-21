@@ -15,6 +15,7 @@
   IRC users
 - Fully customizable, expandable through commands and PRIVMSG
   callbacks
+- Fully libre software! Licensed with the AGPLv3.
 
 * How to use and expand
 Coming soon.

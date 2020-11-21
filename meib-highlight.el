@@ -21,16 +21,15 @@
     (funcall func (last remaining-users n))
     (meib-highlight-n-at-a-time (butlast remaining-users n) n func)))
 
-(defun meib-highlight (process message arguments)
+(defun meib-highlight (process sender receiver arguments)
   "Highlights all the users of the channel."
-  (let* ((channel-name (car (plist-get message :arguments)))
-	 (connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
 	 (channel-users
-	  (plist-get (cdr (assoc-string channel-name (plist-get connected-server-plist :channels))) :users)))
+	  (plist-get (cdr (assoc-string receiver (plist-get connected-server-plist :channels))) :users)))
     (meib-highlight-n-at-a-time
      channel-users meib-highlight-users-per-line
      (lambda (users)
-       (meib-privmsg process channel-name (string-join users " "))))))
+       (meib-privmsg process receiver (string-join users " "))))))
 
 (provide 'meib-highlight)
 

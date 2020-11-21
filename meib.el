@@ -10,9 +10,6 @@
 ;;
 ;; o Reconnecting to channels after being kicked.
 ;;
-;; o Change the arguments the commands retrieve. Sending the whole
-;;   message is unneeded, and for simplicity sake, it should be replaced
-;;   with sender and receiver.
 
 ;;; Code:
 
@@ -43,7 +40,7 @@
 	   :use-tls t :nick-name "Meibel"
 	   :user-name "meibel" :real-name "Maybelline"
 	   :authentication (("Meibel" . "password"))
-	   :channels ("#gnu" "#emacs")
+	   :channels ("#gnu" "#fsf" "#emacs")
 	   :throttle 1.6 :truncate 419 :anti-kick 6
 	   :ignored-users ("someone")
 	   :authorized-users ("Meibel"))))
@@ -165,7 +162,7 @@ in detail in `meib-process-irc-message'."
   "The callbacks to commands processed by `meib-process-command'.
 They are in the form of (COMMAND-NAME . FUNCTION).
 
-FUNCTION takes in the arguments (PROCESS MESSAGE ARGUMENTS).  For a
+FUNCTION takes in the arguments (PROCESS SENDER RECEIVER ARGUMENTS).  For a
 more in-depth explanation of MESSAGE, consult
 `meib-privmsg-callbacks'.  For an explanation of ARGUMENTS, consult
 `meib-parse-command'."
@@ -212,19 +209,17 @@ nickname of the bot, the channels the bot is in, the usernames in
 each channel, and so on.  The information is a plist in the
 form (PARAMETER VALUE).")
 
-(defun meib-command-clear-queue (process message arguments)
+(defun meib-command-clear-queue (process sender receiver arguments)
   "Clear the message queue."
-  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
-	 (channel (car (plist-get message :arguments))))
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist))))
     (plist-put connected-server-plist :queue nil)
-    (meib-privmsg process channel "Cleared the message queue.")))
+    (meib-privmsg process receiver "Cleared the message queue.")))
 
-(defun meib-command-help (process message arguments)
+(defun meib-command-help (process sender receiver arguments)
   "Go through all commands and list them.
 If an argument is specified, then show the specified command's
 documentation."
-  (let* ((channel (car (plist-get message :arguments)))
-	 (arg1 (car arguments))
+  (let* ((arg1 (car arguments))
 	 (command-function (cdr (assoc arg1 meib-command-alist)))
 	 (restricted-command-function (cdr (assoc arg1 meib-restricted-command-alist)))
 	 (command-list (mapconcat (lambda (command) (car command)) meib-command-alist " "))
@@ -234,9 +229,9 @@ documentation."
 			  (replace-regexp-in-string
 			   "\n" " " (documentation (or command-function restricted-command-function))))))
     (if (and arg1 (or command-function restricted-command-function))
-	(meib-privmsg process channel (format "%s --- %s" arg1 documentation))
-      (meib-privmsg process channel (format "Available commands: %s"
-					    (concat command-list " " restricted-command-list))))))
+	(meib-privmsg process receiver (format "%s --- %s" arg1 documentation))
+      (meib-privmsg process receiver (format "Available commands: %s"
+					     (concat command-list " " restricted-command-list))))))
 
 (defun meib-privmsg (process receiver message)
   "Send MESSAGE to RECEIVER via PROCESS.
@@ -296,10 +291,10 @@ arguments PROCESS and MESSAGE, as well as the received arguments."
 	 (command-function (cdr (assoc (car command-with-args) meib-command-alist)))
 	 (restricted-command-function (cdr (assoc (car restricted-command-with-args) meib-restricted-command-alist))))
     (if command-function
-	(funcall command-function process message (cdr command-with-args))
+	(funcall command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr command-with-args))
       (when restricted-command-function
 	(if (member nick-name authorized-users)
-	    (funcall restricted-command-function process message (cdr restricted-command-with-args))
+	    (funcall restricted-command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr restricted-command-with-args))
 	  (meib-privmsg process channel-name "You can't use this command."))))))
 
 (defun meib-parse-command (input regexp)

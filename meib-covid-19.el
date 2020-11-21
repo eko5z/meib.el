@@ -48,17 +48,16 @@
 		 (meib-covid-19-group-number one-case-per) (meib-covid-19-group-number one-death-per)))
       (meib-privmsg process channel-name "Either the country doesn't exist, or there was an error."))))
 
-(defun meib-covid-19 (process message arguments)
+(defun meib-covid-19 (process sender receiver arguments)
   "Returns information about the COVID-19 pandemic.
 If an argument is provided, return information about that
 country. It's best if the argument is ISO2 or ISO3 in format."
-  (let* ((channel-name (car (plist-get message :arguments)))
-	 (arg1 (car arguments)))
+  (let* ((arg1 (car arguments)))
     (if arg1
 	(url-retrieve (concat meib-covid-19-api-url "countries/" (downcase arg1))
-		      'meib-covid-19-url-callback `(,process ,channel-name) t t)
+		      'meib-covid-19-url-callback `(,process ,receiver) t t)
       (url-retrieve (concat meib-covid-19-api-url "all")
-		    'meib-covid-19-url-callback `(,process ,channel-name) t t))))
+		    'meib-covid-19-url-callback `(,process ,receiver) t t))))
 
 (provide 'meib-covid-19)
 

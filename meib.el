@@ -183,14 +183,14 @@ For a more in-depth description of this alist, see
   :group 'meib
   :type '(repeat (cons :tag "Command" (string :tag "Name") (function :tag "Callback"))))
 
-(defcustom meib-command-regexp (rx ?\¿ (group (1+ (any alphanumeric ?\-))) (0+ (any blank) (group (1+ (any alphanumeric ?\-)))) ?\?)
+(defcustom meib-command-regexp (rx ?\¿ (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\?)
   "Regexp that matches a command.
-The first group should be the command name itself, and the
-rest (if any) are the commands."
+The group that the regexp matches should be the command name and
+the arguments, in the form \"command argument1 argumentn\". "
   :group 'meib
   :type 'regexp)
 
-(defcustom meib-restricted-command-regexp (rx ?\¡ (group (1+ (any alphanumeric ?\-))) (0+ (any blank) (group (1+ (any alphanumeric ?\-)))) ?\!)
+(defcustom meib-restricted-command-regexp (rx ?\! (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\!)
   "Regexp that matches a restricted command.
 See `meib-command-regexp'."
   :group 'meib
@@ -301,8 +301,7 @@ arguments PROCESS and MESSAGE, as well as the received arguments."
   "Process INPUT according to REGEXP and see if it has a command.
 If it is, return (COMMAND . ARGUMENTS), otherwise return nil."
   (when (string-match regexp input)
-    (let ((n-matches (1- (/ (length (match-data)) 2))))
-      (mapcar (lambda (i) (match-string i input)) (number-sequence 1 n-matches)))))
+    (split-string (match-string 1 input) " " t)))
 
 (defun meib nil
   "Connect to the servers in `meib-server-alist'.

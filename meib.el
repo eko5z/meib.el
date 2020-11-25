@@ -551,7 +551,9 @@ users."
 
 (defun meib-handler-KICK (process message)
   "Handle MESSAGE from PROCESS if it's a KICK.
-After a KICK command, we remove the user from our list of users."
+After a KICK command, we remove the user from our list of users.
+If the rejoin option is set in `meib-server-alist', then we also
+try to rejoin."
   (let* ((rejoin (plist-get (cdr (assoc-string (plist-get (cdr (assoc process meib-connected-server-alist)) :address) meib-server-alist)) :rejoin))
 	 (channel-name (car (plist-get message :arguments)))
 	 (nick-name (cadr (plist-get message :arguments))))

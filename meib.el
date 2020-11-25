@@ -6,10 +6,7 @@
 ;;
 ;; And I'm not boasting or anything, but this bot is state-of-the-art.
 ;; 
-;; TODO:
-;;
-;; o Reconnecting to channels after being kicked.
-;;
+;; TODO: Nothing, at the moment.
 
 ;;; Code:
 
@@ -41,7 +38,7 @@
 	   :user-name "meibel" :real-name "Maybelline"
 	   :authentication (("Meibel" . "password"))
 	   :channels ("#gnu" "#fsf" "#emacs")
-	   :throttle 1.6 :truncate 419 :anti-kick 6
+	   :throttle 1.6 :truncate 419 :anti-kick 6 :rejoin 3
 	   :ignored-users ("someone")
 	   :authorized-users ("Meibel"))))
   "An alist of IRC connections to establish when running `meib'.
@@ -93,6 +90,11 @@ is subtracted from this value.
 Whether to apply anti-kick measures, i.e. apply a random number
 of invisible characters to the beginning of every PRIVMSG.
 
+`:rejoin'
+
+If non-nil, the amount of seconds after which the bot should
+rejoin a channel after being kicked.
+
 `:ignored-users'
 
 Users whose PRIVMSG's are ignored by the bot.
@@ -118,7 +120,7 @@ What channels to connect to in the server."
 					   (choice (alist :tag "Authenticate"
 							  :key-type (string :tag "Nick name")
 							  :value-type (string :tag "Password"))
-						   (const :tag "Don't authenticate")))
+						   (const :tag "Don't authenticate" nil)))
 					  (:channels (repeat :tag "Channels" (string :tag "Channel")))
 					  (:throttle
 					   (choice (number :tag "Throttle time (in seconds)")
@@ -129,6 +131,9 @@ What channels to connect to in the server."
 					  (:anti-kick
 					   (choice (integer :tag "Random number of invisible characters in interval [0,n)")
 						   (const :tag "Don't apply anti-kick measures" nil)))
+					  (:rejoin
+					   (choice (number :tag "Rejoin time (in seconds)")
+						   (const :tag "Don't rejoin channels" nil)))
 					  (:ignored-users
 					   (repeat :tag "Ignored users"
 						   (string :tag "User")))
@@ -183,18 +188,24 @@ For a more in-depth description of this alist, see
   :group 'meib
   :type '(repeat (cons :tag "Command" (string :tag "Name") (function :tag "Callback"))))
 
-(defcustom meib-command-regexp (rx ?\¿ (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\?)
+(defcustom meib-command-regexp
+  (rx ?\¿ (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\?)
   "Regexp that matches a command.
 The group that the regexp matches should be the command name and
-the arguments, in the form \"command argument1 argumentn\". "
+the arguments, in the form \"command arg1 ... argn\". "
   :group 'meib
-  :type 'regexp)
+  :type (quote (choice (const :tag "Spanish question: `¿command arg1 ... argn?'"
+			      "¿\\(\\([[:word:][:alnum:][:punct:]]+\\)\\(?:[[:blank:]]\\([[:word:][:alnum:][:punct:]]+\\)\\)*\\)\\?")
+		       (regexp :tag "Custom"))))
 
-(defcustom meib-restricted-command-regexp (rx ?\! (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\!)
+(defcustom meib-restricted-command-regexp
+  (rx ?\¡ (group (group (1+ (any word alphanumeric punct))) (0+ (any blank) (group (1+ (any word alphanumeric punct))))) ?\!)
   "Regexp that matches a restricted command.
 See `meib-command-regexp'."
   :group 'meib
-  :type 'regexp)
+  :type (quote (choice (const :tag "Spanish exclamation: `¡command arg1 ... argn!'"
+			      "¡\\(\\([[:word:][:alnum:][:punct:]]+\\)\\(?:[[:blank:]]\\([[:word:][:alnum:][:punct:]]+\\)\\)*\\)!")
+		       (regexp :tag "Custom"))))
 
 (defcustom meib-speak-through-actions t
   "Whether or not the bot should speak through ACTIONs."
@@ -299,7 +310,7 @@ arguments PROCESS and MESSAGE, as well as the received arguments."
 
 (defun meib-parse-command (input regexp)
   "Process INPUT according to REGEXP and see if it has a command.
-If it is, return (COMMAND . ARGUMENTS), otherwise return nil."
+If it is, return (COMMAND ARG1 ... ARGN), otherwise return nil."
   (when (string-match regexp input)
     (split-string (match-string 1 input) " " t)))
 
@@ -540,11 +551,13 @@ users."
 
 (defun meib-handler-KICK (process message)
   "Handle MESSAGE from PROCESS if it's a KICK.
-After a KICK command, we do the same thing as in
-`meib-handler-PART'."
-  (let* ((channel-name (car (plist-get message :arguments)))
+After a KICK command, we remove the user from our list of users."
+  (let* ((rejoin (plist-get (cdr (assoc-string (plist-get (cdr (assoc process meib-connected-server-alist)) :address) meib-server-alist)) :rejoin))
+	 (channel-name (car (plist-get message :arguments)))
 	 (nick-name (cadr (plist-get message :arguments))))
-    (meib-remove-channel-user process channel-name nick-name)))
+    (meib-remove-channel-user process channel-name nick-name)
+    (when rejoin
+      (run-with-timer rejoin nil (lambda (process channel-name) (meib-send-string process (format "JOIN %s" channel-name))) process channel-name))))
 
 (defun meib-handler-QUIT (process message)
   "Handle MESSAGE from PROCESS if it's a QUIT.

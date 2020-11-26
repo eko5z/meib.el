@@ -272,15 +272,15 @@ documentation."
   (let* ((arg1 (car arguments))
 	 (command-function (cdr (assoc arg1 meib-command-alist)))
 	 (restricted-command-function (cdr (assoc arg1 meib-restricted-command-alist)))
-	 (command-list (mapconcat (lambda (command) (car command)) meib-command-alist " "))
-	 (restricted-command-list (mapconcat (lambda (command) (concat "/!\\" (car command) "/!\\"))
+	 (command-list (mapconcat (lambda (command) (mp (car command) nil t)) meib-command-alist " "))
+	 (restricted-command-list (mapconcat (lambda (command) (mp (car command) t t 4))
 					     meib-restricted-command-alist " "))
 	 (documentation (when (or command-function restricted-command-function)
 			  (replace-regexp-in-string
 			   "\n" " " (documentation (or command-function restricted-command-function))))))
     (if (and arg1 (or command-function restricted-command-function))
 	(meib-privmsg process receiver (format "%s --- %s" (mp arg1 t) (mp documentation nil t)))
-      (meib-privmsg process receiver (format "Available commands: %s"
+      (meib-privmsg process receiver (format "Available commands (restricted commands in red): %s"
 					     (concat command-list " " restricted-command-list))))))
 
 ;; I'm not sure if the characters used are exactly the de-facto

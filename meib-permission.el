@@ -3,7 +3,8 @@
 ;;; Commentary:
 ;; TODO:
 ;;
-;; o Perhaps make `meib-permission-users' have a default field?
+;; o Perhaps make `meib-permission-users' have a default field? IF
+;;   that's possible.
 
 ;;; Code:
 
@@ -35,9 +36,9 @@ speak."
 	 (arg1 (car arguments))
 	 (nick-name (meib-nick-name-from-full-name (if arg1 arg1 sender)))
 	 (permission (cdr (assoc nick-name meib-permission-users))))
-    (meib-privmsg process receiver (format "Checking if %s has a permission to speak..." nick-name))
+    (meib-privmsg process receiver (format "Checking if %s has a permission to speak..." (mp nick-name nil t)))
     (meib-privmsg process receiver (format
-					"According to my database, %s%s %s" nick-name
+					"According to my database, %s%s %s" (mp nick-name nil t)
 				        (if (member nick-name channel-users) "" " is not here, but")
 					(if permission permission meib-permission-default)))))
 

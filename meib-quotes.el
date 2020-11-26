@@ -63,13 +63,13 @@ baudrillard'."
 	 (quote_ (car quote-full))
 	 (author (cdr quote-full)))
     (if quote_
-	(meib-privmsg process receiver (format "\"%s\" --- %s" quote_ author))
+	(meib-privmsg process receiver (format "%s --- %s" (mp quote_ nil t) (mp author t)))
       (let* ((random-collection (nth (random (length meib-quotes-collection-alist)) meib-quotes-collection-alist))
 	     (collection-name (car random-collection))
 	     (random-quote (nth (length (cdr random-collection)) random-collection))
 	     (quote_ (car random-quote))
 	     (author (cdr random-quote)))
-	(meib-privmsg process receiver (format "\"%s\" --- %s (%s)" quote_ author (capitalize collection-name)))))))
+	(meib-privmsg process receiver (format "%s --- %s (%s)" (mp quote_ nil t) (mp author t) (mp (capitalize collection-name) t t)))))))
 
 (provide 'meib-quotes)
 

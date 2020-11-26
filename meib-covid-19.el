@@ -33,19 +33,16 @@
 	 (cases-today (cdr (assoc 'todayCases json)))
 	 (deaths (cdr (assoc 'deaths json)))
 	 (deaths-today (cdr (assoc 'todayDeaths json)))
-	 (recovered (cdr (assoc 'recovered json)))
-	 (recovered-today (cdr (assoc 'todayRecovered json)))
 	 (one-case-per (cdr (assoc 'oneCasePerPeople json)))
 	 (one-death-per (cdr (assoc 'oneDeathPerPeople json))))
     (if cases
 	(meib-privmsg
 	 process channel-name
-	 (format "In %s (%s people), there are %s (+%s) cases, %s (+%s) deaths, and %s (+%s) recovered. 1 in %s are infected, 1 in %s are dead."
-		 (if country country "the World") (meib-covid-19-group-number population)
-		 (meib-covid-19-group-number cases) (meib-covid-19-group-number cases-today)
-		 (meib-covid-19-group-number deaths) (meib-covid-19-group-number deaths-today)
-		 (meib-covid-19-group-number recovered) (meib-covid-19-group-number recovered-today)
-		 (meib-covid-19-group-number one-case-per) (meib-covid-19-group-number one-death-per)))
+	 (format "In %s (%s people), there are %s (+%s) cases, and %s (+%s) deaths. 1 in %s are infected, 1 in %s are dead."
+		 (mp (if country country "the World") nil t) (mp (meib-covid-19-group-number population) t)
+		 (mp (meib-covid-19-group-number cases) t nil 3) (mp (meib-covid-19-group-number cases-today) t t 3)
+		 (mp (meib-covid-19-group-number deaths) t nil 5) (mp (meib-covid-19-group-number deaths-today) t t 5)
+		 (mp (meib-covid-19-group-number one-case-per) t nil 3) (mp (meib-covid-19-group-number one-death-per) t nil 5)))
       (meib-privmsg process channel-name "Either the country doesn't exist, or there was an error."))))
 
 (defun meib-covid-19 (process sender receiver arguments)

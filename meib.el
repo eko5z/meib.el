@@ -1,12 +1,15 @@
-;;; meib.el --- My Emacs I(RC) Bot (and sort-of client).
+;;; meib.el --- MEIB Emacs I(RC) Bot.
 
 ;;; Commentary:
-;; The code is largely inspired (and in some parts copied) from
-;; rcirc.el.
+;; The code is inspired (and in some parts copied) from
+;; rcirc.el. Although the code is also vastly different, with a
+;; different architecture.
 ;;
 ;; And I'm not boasting or anything, but this bot is state-of-the-art.
 ;; 
-;; TODO: Nothing, at the moment.
+;; TODO:
+;; 
+;; o Responding to CTCP messages.
 
 ;;; Code:
 
@@ -142,7 +145,7 @@ What channels to connect to in the server."
 						   (string :tag "User"))))))))
   
 (defcustom meib-privmsg-callbacks
-  '(meib-process-command)
+  '(meib-process-command meib-dot-bots-reply)
   "Callbacks exceuted on a PRIVMSG command.
 The callbacks take in the arguments (PROCESS MESSAGE).
 
@@ -220,6 +223,42 @@ nickname of the bot, the channels the bot is in, the usernames in
 each channel, and so on.  The information is a plist in the
 form (PARAMETER VALUE).")
 
+(defun meib-process-command (process message)
+  "Process MESSAGE and see if it contains a command.
+If it does, call (or don't) the corresponding callback with
+arguments PROCESS and MESSAGE, as well as the received arguments."
+  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
+	 (server-plist (cdr (assoc (plist-get connected-server-plist :address) meib-server-alist)))
+	 (authorized-users (plist-get server-plist :authorized-users))
+	 (nick-name (meib-nick-name-from-full-name (plist-get message :sender)))
+	 (channel-name (car (plist-get message :arguments)))
+	 (command-with-args
+	  (meib-parse-command (cadr (plist-get message :arguments)) meib-command-regexp))
+	 (restricted-command-with-args
+	  (meib-parse-command (cadr (plist-get message :arguments)) meib-restricted-command-regexp))
+	 (command-function (cdr (assoc (car command-with-args) meib-command-alist)))
+	 (restricted-command-function (cdr (assoc (car restricted-command-with-args) meib-restricted-command-alist))))
+    (if command-function
+	(funcall command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr command-with-args))
+      (when restricted-command-function
+	(if (member nick-name authorized-users)
+	    (funcall restricted-command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr restricted-command-with-args))
+	  (meib-privmsg process channel-name "You can't use this command."))))))
+
+(defun meib-parse-command (input regexp)
+  "Process INPUT according to REGEXP and see if it has a command.
+If it is, return (COMMAND ARG1 ... ARGN), otherwise return nil."
+  (when (string-match regexp input)
+    (split-string (match-string 1 input) " " t)))
+
+(defun meib-dot-bots-reply (process message)
+  "Process MESSAGE and see if it's \".bots\".
+If it is, reply with the name of the bot and the source."
+  (let ((channel-name (car (plist-get message :arguments)))
+	(text (cadr (plist-get message :arguments))))
+    (when (string= text ".bots")
+      (meib-privmsg process channel-name "MEIB Emacs I(RC) Bot, AGPLv3---https://github.com/emssej/meib.el/"))))
+
 (defun meib-command-clear-queue (process sender receiver arguments)
   "Clear the message queue."
   (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist))))
@@ -240,9 +279,26 @@ documentation."
 			  (replace-regexp-in-string
 			   "\n" " " (documentation (or command-function restricted-command-function))))))
     (if (and arg1 (or command-function restricted-command-function))
-	(meib-privmsg process receiver (format "%s --- %s" arg1 documentation))
+	(meib-privmsg process receiver (format "%s --- %s" (meib-propertize arg1 t) (meib-propertize documentation nil t)))
       (meib-privmsg process receiver (format "Available commands: %s"
 					     (concat command-list " " restricted-command-list))))))
+
+;; I'm not sure if the characters used are exactly the de-facto
+;; standard---but I use rcirc, and that's what it seems to parse. The
+;; order of the arguments is specific in this way because I think bold
+;; and italic are the most used properties.
+(defun meib-propertize (text &optional bold italic fg bg underline)
+  "Attach IRC text properties to TEXT.
+If FG is non-nil, use it as the text foreground color. If BG is
+non-nil, use it as the text background color. A color is a number
+from 0–15.
+If BOLD is non-nil, make the text bold.
+If ITALIC is non-nil, make the text italic.
+If UNDERLINE is non-nil, underline the text."
+  (concat (when fg (string ?\C-c)) (when fg (number-to-string fg))
+	  (when (and fg bg) (string ?\,)) (when (and fg bg) (number-to-string bg))
+	  (when bold (string ?\C-b)) (when italic (string ?\C-v))
+	  (when underline (string ?\C-_)) text (string ?\C-o)))
 
 (defun meib-privmsg (process receiver message)
   "Send MESSAGE to RECEIVER via PROCESS.
@@ -285,34 +341,6 @@ If ACTIONP is non-nil, send the message as an ACTION."
 	     (if truncate truncated message) (if anti-kick (make-string n ?\C-b) "")
 	     (if actionp ""))
      rest)))
-
-(defun meib-process-command (process message)
-  "Process MESSAGE and see if it contains a command.
-If it does, call (or don't) the corresponding callback with
-arguments PROCESS and MESSAGE, as well as the received arguments."
-  (let* ((connected-server-plist (cdr (assoc process meib-connected-server-alist)))
-	 (server-plist (cdr (assoc (plist-get connected-server-plist :address) meib-server-alist)))
-	 (authorized-users (plist-get server-plist :authorized-users))
-	 (nick-name (meib-nick-name-from-full-name (plist-get message :sender)))
-	 (channel-name (car (plist-get message :arguments)))
-	 (command-with-args
-	  (meib-parse-command (cadr (plist-get message :arguments)) meib-command-regexp))
-	 (restricted-command-with-args
-	  (meib-parse-command (cadr (plist-get message :arguments)) meib-restricted-command-regexp))
-	 (command-function (cdr (assoc (car command-with-args) meib-command-alist)))
-	 (restricted-command-function (cdr (assoc (car restricted-command-with-args) meib-restricted-command-alist))))
-    (if command-function
-	(funcall command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr command-with-args))
-      (when restricted-command-function
-	(if (member nick-name authorized-users)
-	    (funcall restricted-command-function process (plist-get message :sender) (car (plist-get message :arguments)) (cdr restricted-command-with-args))
-	  (meib-privmsg process channel-name "You can't use this command."))))))
-
-(defun meib-parse-command (input regexp)
-  "Process INPUT according to REGEXP and see if it has a command.
-If it is, return (COMMAND ARG1 ... ARGN), otherwise return nil."
-  (when (string-match regexp input)
-    (split-string (match-string 1 input) " " t)))
 
 (defun meib nil
   "Connect to the servers in `meib-server-alist'.

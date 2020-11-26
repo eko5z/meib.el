@@ -279,7 +279,7 @@ documentation."
 			  (replace-regexp-in-string
 			   "\n" " " (documentation (or command-function restricted-command-function))))))
     (if (and arg1 (or command-function restricted-command-function))
-	(meib-privmsg process receiver (format "%s --- %s" (meib-propertize arg1 t) (meib-propertize documentation nil t)))
+	(meib-privmsg process receiver (format "%s --- %s" (mp arg1 t) (mp documentation nil t)))
       (meib-privmsg process receiver (format "Available commands: %s"
 					     (concat command-list " " restricted-command-list))))))
 
@@ -287,6 +287,8 @@ documentation."
 ;; standard---but I use rcirc, and that's what it seems to parse. The
 ;; order of the arguments is specific in this way because I think bold
 ;; and italic are the most used properties.
+(defalias 'mp 'meib-propertize)		;Is this a good alias?
+
 (defun meib-propertize (text &optional bold italic fg bg underline)
   "Attach IRC text properties to TEXT.
 If FG is non-nil, use it as the text foreground color. If BG is

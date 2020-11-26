@@ -7,9 +7,7 @@
 ;;
 ;; And I'm not boasting or anything, but this bot is state-of-the-art.
 ;; 
-;; TODO:
-;; 
-;; o Responding to CTCP messages.
+;; TODO: I don't think there's anything more to do.
 
 ;;; Code:
 
@@ -632,8 +630,41 @@ After a NICK command, we change the username in ALL channels."
 In here, we just call the callbacks in
 `meib-privmsg-callbacks'.  These do whatever they want, from
 handling commands, to parsing URLs."
+  (if (string-match "^\C-a\\(.*\\)\C-a$" (cadr (plist-get message :arguments)))
+      (meib-handler-CTCP process message))
   (dolist (callback meib-privmsg-callbacks)
     (funcall callback process message)))
+
+(defun meib-handler-NOTICE (process message)
+  "Handle MESSAGE from PROCESS if it's a NOTICE."
+  (if (string-match "^\C-a\\(.*\\)\C-a$" (cadr (plist-get message :arguments)))
+      (meib-handler-CTCP process message)))
+  
+(defun meib-handler-CTCP (process message)
+  "Handle CTCP MESSAGE from PROCESS."
+  (let ((text (cadr (plist-get message :arguments))))
+    (if (string-match "^\\([^ ]+\\) *\\(.*\\)$" text)
+	(let* ((request (replace-regexp-in-string "" "" (upcase (match-string 1 text))))
+               (args (match-string 2 text))
+               (handler (intern-soft (concat "meib-handler-CTCP-" request))))
+	  (when (fboundp handler)
+	    (funcall handler process message))))))
+
+(defun meib-handler-CTCP-VERSION (process message)
+  "Handle CTCP VERSION MESSAGE from PROCESS."
+  (let ((sender (meib-nick-name-from-full-name (plist-get message :sender)))
+	(version-string (format "MEIB Emacs I(RC) Bot (check CTCP SOURCE) running on %s" (emacs-version))))
+    (meib-send-string process (format "NOTICE %s :VERSION %s" sender version-string))))
+
+(defun meib-handler-CTCP-SOURCE (process message)
+  "Handle CTCP SOURCE MESSAGE from PROCESS."
+  (let ((sender (meib-nick-name-from-full-name (plist-get message :sender))))
+    (meib-send-string process (format "NOTICE %s :SOURCE %s" sender "🄯 AGPLv3 --- https://github.com/emssej/meib.el"))))
+
+(defun meib-handler-CTCP-TIME (process message)
+  "Handle CTCP TIME MESSAGE from PROCESS."
+  (let ((sender (meib-nick-name-from-full-name (plist-get message :sender))))
+    (meib-send-string process (format "NOTICE %s :TIME %s" sender (current-time-string)))))
 
 (defun meib-add-channel-user (process channel-name nick-name)
   "Add NICK-NAME to CHANNEL-NAME in the PROCESS plist.
